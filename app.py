@@ -205,8 +205,20 @@ def plot_series_and_doy(
             sdata["time"], sdata["temperature_rolling_mean"],
             linewidth=2, color="tomato", label="Rolling mean",
         )
-        ax1.legend(fontsize=8)
 
+    t_mean = sdata["temperature"].mean()
+    t_med  = sdata["temperature"].median()
+
+    ax1.axhline(
+        t_mean, color="crimson", linewidth=1.4, linestyle="--",
+        label=f"Mean {t_mean:.2f} °C",
+    )
+    ax1.axhline(
+        t_med, color="darkorange", linewidth=1.4, linestyle="--",
+        label=f"Median {t_med:.2f} °C",
+    )
+
+    ax1.legend(fontsize=8)
     ax1.set_xlabel("Time")
     ax1.set_ylabel("Temperature (°C)")
     ax1.set_title(f"Time Series — {label} ({yr})")
@@ -283,7 +295,6 @@ def plot_doy_all(
     latitude: float,
     longitude: float,
 ) -> plt.Figure:
-    
     """
     Plot 3 (summary) – CORA interannual DOY scatter +
     ALL logger markers: mean (filled) and median (open).
@@ -462,6 +473,19 @@ if "logger_dfs" in st.session_state:
     # ── Summary section ───────────────────────────────────────────────────────
     st.header("📊 Summary — All Loggers vs CORA")
 
+    rows = []
+    for fname, sdata in logger_dfs.items():
+        rows.append({
+            "File":        fname,
+            "Name":        sdata["custom_name"].iloc[0],
+            "Month":       sdata["time"].iloc[0].strftime("%B %Y"),
+            "Mean (°C)":   round(sdata["temperature"].mean(),   2),
+            "Median (°C)": round(sdata["temperature"].median(), 2),
+            "Std (°C)":    round(sdata["temperature"].std(),    2),
+            "N samples":   len(sdata),
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True)
+
     # Plot 3 – DOY vs CORA (all loggers)
     fig3 = plot_doy_all(cora_df, logger_dfs, latitude, longitude)
     st.pyplot(fig3)
@@ -471,20 +495,5 @@ if "logger_dfs" in st.session_state:
         "⭐ stars = 2025  |  ▲ triangles = 2026  |  ■ squares = 2027  |  ● circles = other  \n"
         "**Filled marker** = mean  ·  **Open marker** = median"
     )
-
-    st.divider()
-    rows = []
-    for fname, sdata in logger_dfs.items():
-        rows.append({
-            "File":        fname,
-            "Month":       sdata["time"].iloc[0].strftime("%B %Y"),
-            "Mean (°C)":   round(sdata["temperature"].mean(),   2),
-            "Median (°C)": round(sdata["temperature"].median(), 2),
-            "Std (°C)":    round(sdata["temperature"].std(),    2),
-            "N samples":   len(sdata),
-        })
-    st.dataframe(pd.DataFrame(rows), use_container_width=True)
-
-   
 
     cs_mach1_footer()
