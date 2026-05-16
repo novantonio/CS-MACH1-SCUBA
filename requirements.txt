@@ -4,4 +4,3 @@ matplotlib
 numpy
 requests
 beacon-api
-io
