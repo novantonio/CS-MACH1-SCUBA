@@ -774,8 +774,9 @@ if "logger_dfs" in st.session_state:
         st.error("CORA data could not be fetched.")
         st.stop()
 
-    with st.spinner("Loading WOD data…"):
-        wod_df = get_ranges_from_wod(latitude, longitude)
+#  next version can include
+#    with st.spinner("Loading WOD data…"):
+#        wod_df = get_ranges_from_wod(latitude, longitude)
 
     # ── Per-file ──────────────────────────────────────────────────────────────
     for fname, proc_df in logger_dfs.items():
