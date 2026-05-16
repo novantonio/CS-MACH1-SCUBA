@@ -7,10 +7,10 @@ Layout
 ------
 For every uploaded CSV:
   • Plot 1 – Temperature time-series (raw + rolling mean)
-  • Plot 2 – CORA interannual DOY scatter + THIS logger's single marker
+  • Plot 2 – CORA interannual DOY scatter + THIS logger's markers (mean & median)
 
 After all individual files:
-  • Plot 3 – CORA interannual DOY scatter + ALL logger markers
+  • Plot 3 – CORA interannual DOY scatter + ALL logger markers (mean & median)
   • Summary table (mean, median, std per file)
 """
 
@@ -114,14 +114,14 @@ def parse_envlog_csv(df: pd.DataFrame) -> pd.DataFrame:
         .reset_index(drop=True)
     )
     clean_df.columns = ["time", "temperature"]
-    clean_df["time"]        = pd.to_datetime(clean_df["time"],        errors="coerce")
-    clean_df["temperature"] = pd.to_numeric(clean_df["temperature"],  errors="coerce")
+    clean_df["time"]        = pd.to_datetime(clean_df["time"],       errors="coerce")
+    clean_df["temperature"] = pd.to_numeric(clean_df["temperature"], errors="coerce")
 
-    clean_df["serial"]            = metadata.serial
-    clean_df["custom_name"]       = metadata.custom_name
+    clean_df["serial"]             = metadata.serial
+    clean_df["custom_name"]        = metadata.custom_name
     clean_df["sampling_frequency"] = metadata.sampling_frequency
-    clean_df["latitude"]          = metadata.latitude
-    clean_df["longitude"]         = metadata.longitude
+    clean_df["latitude"]           = metadata.latitude
+    clean_df["longitude"]          = metadata.longitude
 
     return clean_df.dropna()
 
@@ -137,15 +137,13 @@ def add_rolling_mean(df: pd.DataFrame, window_size: int = 5) -> pd.DataFrame:
 
 
 def add_temperature_summary(df: pd.DataFrame) -> pd.DataFrame:
-    """Append mean and median columns (uses rolling mean if available)."""
+    """Append mean and median columns (computed on rolling mean if available)."""
     result = df.copy()
-
     src = (
         result["temperature_rolling_mean"]
         if "temperature_rolling_mean" in result.columns
         else result["temperature"]
     )
-
     result["temperature_mean"]   = src.mean()
     result["temperature_median"] = src.median()
     return result
@@ -205,7 +203,8 @@ def plot_doy_single(
 ) -> plt.Figure:
     """
     Plot 2 (per-file) – CORA interannual DOY scatter +
-    a single marker for this logger.
+    TWO markers for this logger: mean (filled, crimson) and median (open, navy).
+    A dotted vertical segment connects the two.
     """
     fig, ax = plt.subplots(figsize=(12, 5))
 
@@ -218,16 +217,35 @@ def plot_doy_single(
                 marker=".", markersize=4, linestyle="--",
                 color=colour, alpha=0.6, label=str(year))
 
-    # Single logger marker
+    # ── Logger markers ────────────────────────────────────────────────────────
     d      = sdata["time"].iloc[0].timetuple().tm_yday
-    tavg   = sdata["temperature"].mean()
+    t_mean = sdata["temperature"].mean()
+    t_med  = sdata["temperature"].median()
     label  = sdata["custom_name"].iloc[0]
     yr     = sdata["time"].iloc[0].year
     marker = _year_marker(yr)
 
-    ax.plot(d, tavg, marker=marker, markersize=20, linestyle="None",
-            color="crimson", markeredgecolor="black", markeredgewidth=0.8,
-            label=f"{label} ({yr})")
+    # Mean — filled crimson
+    ax.plot(
+        d, t_mean,
+        marker=marker, markersize=20, linestyle="None",
+        color="crimson", markeredgecolor="black", markeredgewidth=0.8,
+        label=f"{label} ({yr}) — mean {t_mean:.2f} °C",
+    )
+
+    # Median — open (white fill), navy edge
+    ax.plot(
+        d, t_med,
+        marker=marker, markersize=20, linestyle="None",
+        color="white", markeredgecolor="navy", markeredgewidth=1.8,
+        label=f"{label} ({yr}) — median {t_med:.2f} °C",
+    )
+
+    # Dotted connector between mean and median
+    ax.plot(
+        [d, d], [t_mean, t_med],
+        color="grey", linewidth=1, linestyle=":",
+    )
 
     ax.set_xlabel("Day of Year")
     ax.set_ylabel("Temperature [°C]")
@@ -249,7 +267,7 @@ def plot_doy_all(
 ) -> plt.Figure:
     """
     Plot 3 (summary) – CORA interannual DOY scatter +
-    all logger markers together.
+    ALL logger markers: mean (filled) and median (open).
     """
     fig, ax = plt.subplots(figsize=(12, 6))
 
@@ -262,24 +280,41 @@ def plot_doy_all(
                 marker=".", markersize=4, linestyle="--",
                 color=colour, alpha=0.5, label=str(year))
 
-    # All logger markers
     star_colours = cm.Set1(np.linspace(0, 1, max(len(logger_dfs), 1)))
+
     for (fname, sdata), sc in zip(logger_dfs.items(), star_colours):
         d      = sdata["time"].iloc[0].timetuple().tm_yday
-        tavg   = sdata["temperature"].mean()
+        t_mean = sdata["temperature"].mean()
+        t_med  = sdata["temperature"].median()
         label  = sdata["custom_name"].iloc[0]
         yr     = sdata["time"].iloc[0].year
         marker = _year_marker(yr)
 
-        ax.plot(d, tavg, marker=marker, markersize=20, linestyle="None",
-                color=sc, markeredgecolor="black", markeredgewidth=0.8,
-                label=f"{label} ({yr})")
+        # Mean — filled
+        ax.plot(
+            d, t_mean,
+            marker=marker, markersize=18, linestyle="None",
+            color=sc, markeredgecolor="black", markeredgewidth=0.8,
+            label=f"{label} ({yr}) mean",
+        )
+
+        # Median — open, same colour edge
+        ax.plot(
+            d, t_med,
+            marker=marker, markersize=18, linestyle="None",
+            color="white", markeredgecolor=sc, markeredgewidth=2,
+            label=f"{label} ({yr}) median",
+        )
+
+        # Connector
+        ax.plot([d, d], [t_mean, t_med],
+                color="grey", linewidth=1, linestyle=":")
 
     ax.set_xlabel("Day of Year")
     ax.set_ylabel("Temperature [°C]")
     ax.set_title(
         f"Interannual Temperature Variability at ({latitude:.2f}, {longitude:.2f})\n"
-        "— All loggers —"
+        "— All loggers — filled = mean  ·  open = median —"
     )
     ax.legend(title="Year / Logger", bbox_to_anchor=(1.01, 1), loc="upper left",
               fontsize=7)
@@ -288,12 +323,40 @@ def plot_doy_all(
     return fig
 
 
-# ── Streamlit UI ──────────────────────────────────────────────────────────────
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 
-# Sidebar rolling-window control
-window_size = st.sidebar.slider("Rolling window", min_value=1, max_value=20, value=5)
+with st.sidebar:
 
-# File uploader
+    st.markdown("### ⚙️ Settings")
+
+    window_size = st.slider("Rolling window", min_value=1, max_value=20, value=5)
+
+    st.divider()
+
+    # File counter — updates as soon as files are staged by the uploader
+    n_files = len(st.session_state.get("uploaded_files", []))
+    if n_files > 0:
+        st.success(f"📂 {n_files} file{'s' if n_files != 1 else ''} loaded")
+    else:
+        st.info("📂 No files loaded yet")
+
+    st.divider()
+
+    # Progress bar & status — populated during processing
+    sidebar_progress = st.empty()
+    sidebar_status   = st.empty()
+
+    st.divider()
+
+    start_button = st.button("▶️ Start Processing", type="primary", use_container_width=True)
+
+    if st.button("🧹 Reset", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
+
+
+# ── File uploader (main area) ─────────────────────────────────────────────────
+
 uploaded_files = st.file_uploader(
     "Upload one or more envlog CSV files",
     type=["csv"],
@@ -303,43 +366,46 @@ uploaded_files = st.file_uploader(
 if uploaded_files:
     st.session_state["uploaded_files"] = uploaded_files
 
-col1, col2 = st.columns([1, 1])
-with col1:
-    start_button = st.button("▶️ Start Processing", type="primary")
-with col2:
-    if st.button("🧹 Reset"):
-        st.session_state.clear()
-        st.rerun()
 
 # ── Process ───────────────────────────────────────────────────────────────────
+
 if start_button and "uploaded_files" in st.session_state:
 
     raw_files  = st.session_state["uploaded_files"]
+    total      = len(raw_files)
     logger_dfs: dict[str, pd.DataFrame] = {}
-    progress   = st.progress(0)
-    status     = st.empty()
+
+    pbar = sidebar_progress.progress(0, text="Starting…")
 
     for i, file in enumerate(raw_files):
-        status.write(f"Processing {file.name} …")
+        pct  = int((i / total) * 100)
+        text = f"Processing {i + 1}/{total}: {file.name}"
+        pbar.progress(pct, text=text)
+        sidebar_status.caption(text)
+
         try:
-            raw_df     = pd.read_csv(file)
-            clean_df   = parse_envlog_csv(raw_df)
-            proc_df    = add_rolling_mean(clean_df, window_size=window_size)
-            proc_df    = add_temperature_summary(proc_df)
+            raw_df   = pd.read_csv(file)
+            clean_df = parse_envlog_csv(raw_df)
+            proc_df  = add_rolling_mean(clean_df, window_size=window_size)
+            proc_df  = add_temperature_summary(proc_df)
             logger_dfs[file.name] = proc_df
         except Exception as exc:
             st.warning(f"Failed processing **{file.name}**: {exc}")
-        progress.progress((i + 1) / len(raw_files))
+
+    pbar.progress(100, text="✅ Done!")
+    sidebar_status.caption(
+        f"Processed {len(logger_dfs)}/{total} file{'s' if total != 1 else ''} successfully."
+    )
 
     if not logger_dfs:
         st.error("No valid logger datasets found.")
         st.stop()
 
     st.session_state["logger_dfs"] = logger_dfs
-    status.empty()
-    progress.empty()
+
 
 # ── Display ───────────────────────────────────────────────────────────────────
+
 if "logger_dfs" in st.session_state:
 
     logger_dfs: dict[str, pd.DataFrame] = st.session_state["logger_dfs"]
@@ -372,7 +438,7 @@ if "logger_dfs" in st.session_state:
         st.pyplot(fig1)
         plt.close(fig1)
 
-        # Plot 2 – DOY vs CORA (this file only)
+        # Plot 2 – DOY vs CORA (this file only, mean + median markers)
         fig2 = plot_doy_single(cora_df, sdata, latitude, longitude)
         st.pyplot(fig2)
         plt.close(fig2)
@@ -382,13 +448,12 @@ if "logger_dfs" in st.session_state:
     # ── Summary section ───────────────────────────────────────────────────────
     st.header("📊 Summary — All Loggers vs CORA")
 
-    # Summary table
     rows = []
     for fname, sdata in logger_dfs.items():
         rows.append({
-            "File":   fname,
-            "Name":   sdata["custom_name"].iloc[0],
-            "Month":  sdata["time"].iloc[0].strftime("%B %Y"),
+            "File":        fname,
+            "Name":        sdata["custom_name"].iloc[0],
+            "Month":       sdata["time"].iloc[0].strftime("%B %Y"),
             "Mean (°C)":   round(sdata["temperature"].mean(),   2),
             "Median (°C)": round(sdata["temperature"].median(), 2),
             "Std (°C)":    round(sdata["temperature"].std(),    2),
@@ -401,6 +466,9 @@ if "logger_dfs" in st.session_state:
     st.pyplot(fig3)
     plt.close(fig3)
 
-    st.info("⭐ stars = 2025 data  |  ▲ triangles = 2026 data  |  ■ squares = 2027 data  |  ● circles = other years")
+    st.info(
+        "⭐ stars = 2025  |  ▲ triangles = 2026  |  ■ squares = 2027  |  ● circles = other  \n"
+        "**Filled marker** = mean  ·  **Open marker** = median"
+    )
 
     cs_mach1_footer()
