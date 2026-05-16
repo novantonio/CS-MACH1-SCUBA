@@ -19,6 +19,7 @@ from __future__ import annotations
 import io
 import warnings
 from dataclasses import dataclass
+from datetime import datetime
 
 import matplotlib.cm as cm
 import matplotlib.pyplot as plt
@@ -26,6 +27,21 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
+from reportlab.lib import colors as rl_colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm as rl_cm
+from reportlab.platypus import (
+    HRFlowable,
+    Image as RLImage,
+    PageBreak,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
 
 from cs_mach1_theme import apply_cs_mach1_theme, cs_mach1_footer
 
@@ -43,7 +59,6 @@ apply_cs_mach1_theme(
 DEFAULT_LATITUDE  = 44.376290
 DEFAULT_LONGITUDE = 9.071358
 TMAX              = 32
-MARKERSIZE        = 15
 
 CORA_URL_TEMPLATE = (
     "https://erddap.emodnet-physics.eu/erddap/griddap/"
@@ -291,11 +306,11 @@ def plot_series_and_doy(
                  yerr=cora_monthly["std"],
                  fmt="o", color="steelblue", capsize=3, alpha=0.5, label="± std")
     ax2.plot(m_month, t_mean,
-             marker=marker, markersize=MARKERSIZE, linestyle="None",
+             marker=marker, markersize=12, linestyle="None",
              color="crimson", markeredgecolor="black", markeredgewidth=0.8,
              zorder=5, label=f"{label} mean {t_mean:.2f} °C")
     ax2.plot(m_month, t_med,
-             marker='x', markersize=MARKERSIZE, linestyle="None",
+             marker=marker, markersize=12, linestyle="None",
              color="darkorange", markeredgecolor="black", markeredgewidth=0.8,
              zorder=5, label=f"{label} median {t_med:.2f} °C")
     ax2.plot([m_month, m_month], [t_mean, t_med],
@@ -324,7 +339,7 @@ def plot_series_and_doy(
     # ── [1,0] DOY — MEAN marker (crimson) ─────────────────────────────────────
     _draw_cora_doy(ax3)
     ax3.plot(d_doy, t_mean,
-             marker=marker, markersize=MARKERSIZE, linestyle="None",
+             marker=marker, markersize=22, linestyle="None",
              color="crimson", markeredgecolor="black", markeredgewidth=0.8, zorder=5)
     ax3.annotate(f"mean {t_mean:.2f} °C",
                  xy=(d_doy, t_mean), xytext=(d_doy + 4, t_mean + 0.3),
@@ -335,7 +350,7 @@ def plot_series_and_doy(
     # ── [1,1] DOY — MEDIAN marker (darkorange) ────────────────────────────────
     _draw_cora_doy(ax4)
     ax4.plot(d_doy, t_med,
-             marker=marker, markersize=MARKERSIZE, linestyle="None",
+             marker=marker, markersize=22, linestyle="None",
              color="darkorange", markeredgecolor="black", markeredgewidth=0.8, zorder=5)
     ax4.annotate(f"median {t_med:.2f} °C",
                  xy=(d_doy, t_med), xytext=(d_doy + 4, t_med - 0.4),
@@ -444,6 +459,181 @@ def plot_monthly_all(
     return fig
 
 
+# ── PDF report builder ────────────────────────────────────────────────────────
+
+def _fig_to_rl_image(fig: plt.Figure, width_cm: float = 24.0) -> RLImage:
+    """Render a matplotlib figure to an in-memory PNG and wrap it as a ReportLab Image."""
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+    buf.seek(0)
+    width_pt  = width_cm * rl_cm
+    # Compute height preserving aspect ratio
+    fig_w, fig_h = fig.get_size_inches()
+    height_pt = width_pt * (fig_h / fig_w)
+    img = RLImage(buf, width=width_pt, height=height_pt)
+    return img
+
+
+def build_report_pdf(
+    logger_dfs:  dict[str, pd.DataFrame],
+    clean_dfs:   dict[str, pd.DataFrame],
+    cora_df:     pd.DataFrame,
+    latitude:    float,
+    longitude:   float,
+    window_size: int,
+) -> bytes:
+    """
+    Build a multi-page PDF report and return its bytes.
+
+    Structure
+    ---------
+    • Cover page  – title, location, date, summary table
+    • Per-file pages – 2×2 matplotlib figure (one page per logger)
+    • Summary pages – DOY-all figure + monthly-all figure
+    """
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=landscape(A4),
+        leftMargin=1.5 * rl_cm,
+        rightMargin=1.5 * rl_cm,
+        topMargin=1.5 * rl_cm,
+        bottomMargin=1.5 * rl_cm,
+    )
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        "CS_Title",
+        parent=styles["Title"],
+        fontSize=20,
+        textColor=rl_colors.HexColor("#00A6D6"),
+        spaceAfter=6,
+    )
+    h1_style = ParagraphStyle(
+        "CS_H1",
+        parent=styles["Heading1"],
+        fontSize=13,
+        textColor=rl_colors.HexColor("#00A6D6"),
+        spaceBefore=10,
+        spaceAfter=4,
+    )
+    body_style = ParagraphStyle(
+        "CS_Body",
+        parent=styles["Normal"],
+        fontSize=9,
+        spaceAfter=4,
+    )
+    centre_style = ParagraphStyle(
+        "CS_Centre",
+        parent=body_style,
+        alignment=TA_CENTER,
+        textColor=rl_colors.grey,
+    )
+
+    story = []
+
+    # ── Cover page ─────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 1.5 * rl_cm))
+    story.append(Paragraph("🌊 CS-MACH1 — EnvLogger Temperature Report", title_style))
+    story.append(HRFlowable(width="100%", thickness=2, color=rl_colors.HexColor("#00A6D6")))
+    story.append(Spacer(1, 0.4 * rl_cm))
+
+    meta_lines = [
+        f"<b>Generated:</b> {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        f"<b>Location:</b> {latitude:.4f}° N, {longitude:.4f}° E",
+        f"<b>Rolling window:</b> {window_size} samples",
+        f"<b>Files processed:</b> {len(logger_dfs)}",
+        "<b>Reference climatology:</b> CORA (EMODnet-Physics ERDDAP, 1990–2023)",
+    ]
+    for line in meta_lines:
+        story.append(Paragraph(line, body_style))
+
+    story.append(Spacer(1, 0.6 * rl_cm))
+    story.append(Paragraph("Summary Table", h1_style))
+
+    # Summary table data
+    headers = ["File", "Month", "Mean (°C)", "Median (°C)", "Std (°C)", "N samples"]
+    table_data = [headers]
+    for fname, proc_df in logger_dfs.items():
+        table_data.append([
+            fname,
+            proc_df["time"].iloc[0].strftime("%B %Y"),
+            f"{proc_df['temperature'].mean():.2f}",
+            f"{proc_df['temperature'].median():.2f}",
+            f"{proc_df['temperature'].std():.2f}",
+            str(len(proc_df)),
+        ])
+
+    tbl = Table(table_data, hAlign="LEFT")
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",  (0, 0), (-1, 0),  rl_colors.HexColor("#00A6D6")),
+        ("TEXTCOLOR",   (0, 0), (-1, 0),  rl_colors.white),
+        ("FONTSIZE",    (0, 0), (-1, 0),  9),
+        ("FONTSIZE",    (0, 1), (-1, -1), 8),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+            [rl_colors.HexColor("#F0FAFF"), rl_colors.white]),
+        ("GRID",        (0, 0), (-1, -1), 0.4, rl_colors.HexColor("#CCCCCC")),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING",    (0, 0), (-1, -1), 4),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+    ]))
+    story.append(tbl)
+
+    story.append(Spacer(1, 1.2 * rl_cm))
+    story.append(Paragraph(
+        "CS-MACH1 Project · Ocean Temperature Monitoring Platform",
+        centre_style,
+    ))
+
+    # ── Per-file pages ─────────────────────────────────────────────────────────
+    for fname, proc_df in logger_dfs.items():
+        story.append(PageBreak())
+        lbl = proc_df["custom_name"].iloc[0]
+        yr  = proc_df["time"].iloc[0].year
+        story.append(Paragraph(f"📄 {lbl} ({yr}) — {fname}", h1_style))
+        story.append(HRFlowable(width="100%", thickness=1,
+                                color=rl_colors.HexColor("#00A6D6")))
+        story.append(Spacer(1, 0.3 * rl_cm))
+
+        # Re-generate the 2×2 figure (matplotlib figures were closed after display)
+        fig = plot_series_and_doy(
+            clean_dfs[fname], proc_df, cora_df, latitude, longitude
+        )
+        story.append(_fig_to_rl_image(fig, width_cm=26.0))
+        plt.close(fig)
+
+    # ── Summary pages ──────────────────────────────────────────────────────────
+    story.append(PageBreak())
+    story.append(Paragraph("📊 Summary — All Loggers vs CORA (DOY)", h1_style))
+    story.append(HRFlowable(width="100%", thickness=1,
+                            color=rl_colors.HexColor("#00A6D6")))
+    story.append(Spacer(1, 0.3 * rl_cm))
+
+    fig_doy = plot_doy_all(cora_df, logger_dfs, latitude, longitude)
+    story.append(_fig_to_rl_image(fig_doy, width_cm=26.0))
+    plt.close(fig_doy)
+
+    story.append(PageBreak())
+    story.append(Paragraph("📊 Summary — All Loggers vs CORA (Monthly)", h1_style))
+    story.append(HRFlowable(width="100%", thickness=1,
+                            color=rl_colors.HexColor("#00A6D6")))
+    story.append(Spacer(1, 0.3 * rl_cm))
+
+    fig_monthly = plot_monthly_all(cora_df, logger_dfs)
+    story.append(_fig_to_rl_image(fig_monthly, width_cm=26.0))
+    plt.close(fig_monthly)
+
+    story.append(Spacer(1, 0.5 * rl_cm))
+    story.append(Paragraph(
+        "CS-MACH1 Project · Ocean Temperature Monitoring Platform",
+        centre_style,
+    ))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf.read()
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
@@ -473,6 +663,38 @@ with st.sidebar:
     if st.button("🧹 Reset", use_container_width=True):
         st.session_state.clear()
         st.rerun()
+
+    # PDF download — only available after processing
+    if "logger_dfs" in st.session_state:
+        st.divider()
+        st.markdown("### 📥 Export")
+        if st.button("📄 Generate PDF Report", use_container_width=True):
+            with st.spinner("Building PDF…"):
+                try:
+                    pdf_bytes = build_report_pdf(
+                        logger_dfs   = st.session_state["logger_dfs"],
+                        clean_dfs    = st.session_state["clean_dfs"],
+                        cora_df      = fetch_cora_data(
+                            float(next(iter(st.session_state["logger_dfs"].values()))["latitude"].iloc[0]),
+                            float(next(iter(st.session_state["logger_dfs"].values()))["longitude"].iloc[0]),
+                        ),
+                        latitude     = float(next(iter(st.session_state["logger_dfs"].values()))["latitude"].iloc[0]),
+                        longitude    = float(next(iter(st.session_state["logger_dfs"].values()))["longitude"].iloc[0]),
+                        window_size  = window_size,
+                    )
+                    st.session_state["pdf_bytes"] = pdf_bytes
+                except Exception as exc:
+                    st.error(f"PDF generation failed: {exc}")
+
+        if "pdf_bytes" in st.session_state:
+            fname_ts = datetime.now().strftime("%Y%m%d_%H%M")
+            st.download_button(
+                label="⬇️ Download PDF",
+                data=st.session_state["pdf_bytes"],
+                file_name=f"CS_MACH1_report_{fname_ts}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
 
 
 # ── File uploader ─────────────────────────────────────────────────────────────
