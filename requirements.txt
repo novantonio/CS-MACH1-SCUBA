@@ -4,3 +4,4 @@ matplotlib
 numpy
 requests
 beacon-api
+reportlab
