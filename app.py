@@ -26,6 +26,8 @@ import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
+from beacon_api import * # Import the Beacon API client
+import os
 
 # ── CS-MACH1 branding ─────────────────────────────────────────────────────────
 from cs_mach1_theme import apply_cs_mach1_theme, cs_mach1_footer
@@ -166,6 +168,122 @@ def fetch_cora_data(latitude: float, longitude: float) -> pd.DataFrame | None:
         return df.dropna()
     except Exception as exc:
         st.warning(f"Could not fetch CORA data: {exc}")
+        return None
+
+# ── WOD API ──────────────────────────────────────────────────────────────────
+
+WOD_URL_TEMPLATE = (
+    "https://beacon.maris.nl/api/query?"
+    "collections=wod"
+    "&format=csv"
+    "&latitude={lat}"
+    "&longitude={lon}"
+    "&radius=0.1"
+    "&parameter=TEMP"
+)
+
+@st.cache_data(show_spinner="Downloading WOD climatology…")
+def fetch_wod_data(
+    latitude: float,
+    longitude: float,
+) -> pd.DataFrame | None:
+    """
+    Fetch WOD temperature data from Beacon/Blue-Cloud
+    and return a dataframe compatible with CORA.
+
+    Output columns:
+    - time
+    - TEMP
+
+    Compatible with:
+    - plot_doy_all_mean()
+    - CORA plotting utilities
+    """
+
+    url = WOD_URL_TEMPLATE.format(
+        lat=round(latitude, 4),
+        lon=round(longitude, 4),
+    )
+
+    try:
+        response = requests.get(
+            url,
+            verify=False,
+            timeout=120,
+        )
+
+        response.raise_for_status()
+
+        # Beacon sometimes returns HTML error pages
+        if "<html" in response.text.lower():
+            raise ValueError(
+                "WOD Beacon returned HTML instead of CSV."
+            )
+
+        # Read CSV
+        df = pd.read_csv(
+            io.StringIO(response.text)
+        )
+
+        # -------------------------------------------------
+        # COLUMN HARMONIZATION
+        # -------------------------------------------------
+
+        # Typical Beacon/WOD names
+        rename_map = {
+            "datetime": "time",
+            "date_time": "time",
+            "temperature": "TEMP",
+            "temp": "TEMP",
+        }
+
+        df = df.rename(columns=rename_map)
+
+        # -------------------------------------------------
+        # REQUIRED COLUMNS
+        # -------------------------------------------------
+
+        if "time" not in df.columns:
+            raise ValueError(
+                "Missing 'time' column in WOD response."
+            )
+
+        if "TEMP" not in df.columns:
+            raise ValueError(
+                "Missing 'TEMP' column in WOD response."
+            )
+
+        # -------------------------------------------------
+        # TYPE CLEANING
+        # -------------------------------------------------
+
+        df["time"] = pd.to_datetime(
+            df["time"],
+            errors="coerce",
+        )
+
+        df["TEMP"] = pd.to_numeric(
+            df["TEMP"],
+            errors="coerce",
+        )
+
+        # Optional: keep only needed columns
+        df = df[["time", "TEMP"]]
+
+        # Remove NaNs
+        df = df.dropna()
+
+        # Sort by time
+        df = df.sort_values("time")
+
+        return df
+
+    except Exception as exc:
+
+        st.warning(
+            f"Could not fetch WOD data: {exc}"
+        )
+
         return None
 
 
@@ -651,6 +769,19 @@ if "logger_dfs" in st.session_state:
     
     st.divider()
   
+    # Fetch WOD once
+    with st.spinner("Loading WOD data…"):
+        wod_df = fetch_wod_data(latitude, longitude)
+
+    if wod_df is None:
+        st.error("WOD data could not be fetched. Check your connection and try again.")
+        st.stop()
+    
+    # Plot 4 – DOY vs WOD (all loggers)
+    fig4 = plot_doy_all(wod_df, logger_dfs, latitude, longitude)
+    st.pyplot(fig4)
+    plt.close(fig4)
   
+    st.divider()
 
     cs_mach1_footer()
