@@ -624,6 +624,8 @@ if start_button and "uploaded_files" in st.session_state:
     raw_files  = st.session_state["uploaded_files"]
     total      = len(raw_files)
     logger_dfs: dict[str, pd.DataFrame] = {}
+    clean_dfs: dict[str, pd.DataFrame] = {}
+  
 
     pbar = sidebar_progress.progress(0, text="Starting…")
 
@@ -639,6 +641,7 @@ if start_button and "uploaded_files" in st.session_state:
             proc_df  = add_rolling_mean(clean_df, window_size=window_size)
             proc_df  = add_temperature_summary(proc_df)
             logger_dfs[file.name] = proc_df
+            clean_dfs[file.name] = clean_df
         except Exception as exc:
             st.warning(f"Failed processing **{file.name}**: {exc}")
 
@@ -682,6 +685,8 @@ if "logger_dfs" in st.session_state:
         st.stop()
 
     # ── Per-file section ──────────────────────────────────────────────────────
+  # to use and pass clean_dfs also
+  
     for fname, sdata in logger_dfs.items():
 
         st.subheader(f"📄 {fname}")
