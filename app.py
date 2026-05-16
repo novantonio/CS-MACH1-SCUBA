@@ -665,26 +665,24 @@ with st.sidebar:
         st.rerun()
 
     # PDF download — only available after processing
-    if "logger_dfs" in st.session_state:
-        st.divider()
-        st.markdown("### 📥 Export")
-        if st.button("📄 Generate PDF Report", use_container_width=True):
-            with st.spinner("Building PDF…"):
-                try:
-                    pdf_bytes = build_report_pdf(
-                        logger_dfs   = st.session_state["logger_dfs"],
-                        clean_dfs    = st.session_state["clean_dfs"],
-                        cora_df      = fetch_cora_data(
-                            float(next(iter(st.session_state["logger_dfs"].values()))["latitude"].iloc[0]),
-                            float(next(iter(st.session_state["logger_dfs"].values()))["longitude"].iloc[0]),
-                        ),
-                        latitude     = float(next(iter(st.session_state["logger_dfs"].values()))["latitude"].iloc[0]),
-                        longitude    = float(next(iter(st.session_state["logger_dfs"].values()))["longitude"].iloc[0]),
-                        window_size  = window_size,
-                    )
-                    st.session_state["pdf_bytes"] = pdf_bytes
-                except Exception as exc:
-                    st.error(f"PDF generation failed: {exc}")
+    st.markdown("### 📥 Export")
+    if st.button("📄 Generate PDF Report", use_container_width=True):
+      with st.spinner("Building PDF…"):
+        try:
+          pdf_bytes = build_report_pdf(
+            logger_dfs   = st.session_state["logger_dfs"],
+            clean_dfs    = st.session_state["clean_dfs"],
+            cora_df      = fetch_cora_data(
+              float(next(iter(st.session_state["logger_dfs"].values()))["latitude"].iloc[0]),
+              float(next(iter(st.session_state["logger_dfs"].values()))["longitude"].iloc[0]),
+              ),
+            latitude     = float(next(iter(st.session_state["logger_dfs"].values()))["latitude"].iloc[0]),
+            longitude    = float(next(iter(st.session_state["logger_dfs"].values()))["longitude"].iloc[0]),
+            window_size  = window_size,
+          )
+          st.session_state["pdf_bytes"] = pdf_bytes
+        except Exception as exc:
+          st.error(f"PDF generation failed: {exc}")
 
         if "pdf_bytes" in st.session_state:
             fname_ts = datetime.now().strftime("%Y%m%d_%H%M")
