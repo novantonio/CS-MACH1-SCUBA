@@ -238,6 +238,7 @@ def get_ranges_from_wod(latitude: float, longitude: float) -> pd.DataFrame:
         }
 
     df = df.rename(columns=rename_map)
+    df = df[df['time','TEMP']]
 
     return df
 
@@ -733,8 +734,8 @@ if "logger_dfs" in st.session_state:
   
     
     # Plot 4 – DOY vs WOD (all loggers)
-    st.dataframe(wod_df, use_container_width=True)
-    fig4 = plot_doy_all(wod_df, logger_dfs, latitude, longitude)
+    #st.dataframe(wod_df, use_container_width=True)
+    fig4 = plot_doy_all_mean(wod_df, logger_dfs, latitude, longitude)
     st.pyplot(fig4)
     plt.close(fig4)
   
