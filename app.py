@@ -607,7 +607,7 @@ with st.sidebar:
 # ── File uploader (main area) ─────────────────────────────────────────────────
 
 uploaded_files = st.file_uploader(
-    "Upload one or more envlog CSV files, then press 'PROCESS' ",
+    "Upload one or more envlog CSV files, then press 'Start Processing' ",
     type=["csv"],
     accept_multiple_files=True,
 )
@@ -674,7 +674,7 @@ if "logger_dfs" in st.session_state:
 
     # Fetch WOD once
     with st.spinner("Loading WOD data…"):
-        wod_df = fetch_wod_data(latitude, longitude)
+        wod_df = get_ranges_from_wod(latitude, longitude)
 
     if wod_df is None:
         st.error("WOD data could not be fetched. Check your connection and try again.")
