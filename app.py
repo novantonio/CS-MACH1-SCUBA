@@ -172,101 +172,74 @@ def fetch_cora_data(latitude: float, longitude: float) -> pd.DataFrame | None:
 
 # ── WOD API ──────────────────────────────────────────────────────────────────
 
-BEACON_INSTANCE_URL = "https://beacon-wod.maris.nl"
-
-@st.cache_data(show_spinner="Downloading WOD climatology…")
-def fetch_wod_data(
-    latitude: float,
-    longitude: float,
-) -> pd.DataFrame | None:
-
-    client = Client(BEACON_INSTANCE_URL)
-
+def _get_client():
     try:
-        query_builder = client.query()
-        query_builder.add_select_column("wod_unique_cast") 
-        query_builder.add_select_column("Platform", alias="PLATFORM") 
-        query_builder.add_select_column("Institute", alias="INSTITUTE") 
-        query_builder.add_select_column("Temperature", alias="TEMPERATURE")
-        query_builder.add_select_column("Temperature_WODflag", alias="TEMPERATURE_QC")
-        query_builder.add_select_column("Temperature.units", alias="TEMPERATURE_UNIT")
-        query_builder.add_select_column("z", alias="DEPTH")
-        query_builder.add_select_column("time", alias="TIME") 
-        query_builder.add_select_column("lon", alias="LONGITUDE")
-        query_builder.add_select_column("lat", alias="LATITUDE")
-        query_builder.add_select_column(".featureType", alias="FEATURE_TYPE")
-        
-        ## Add the filters
-        query_builder.add_range_filter("TIME", "1950-01-01T00:00:00", "2025-01-01T00:00:00")  # You can adjust the date range as needed. The format is ISO 8601.
-        query_builder.add_range_filter("LONGITUDE", (latitude - 0.1), (latitude + 0.1))  # Longitude range
-        query_builder.add_range_filter("LATITUDE", (longitude - 0.1), (longitude + 0.1))  # Latitude range from -90 to 90 (you can adjust as needed)
-        query_builder.add_is_not_null_filter("TEMPERATURE")  # Ensure Temperature is not null
-        query_builder.add_not_equals_filter("TEMPERATURE", -1e+10)  # Remove missing values
-        query_builder.add_equals_filter("TEMPERATURE_QC", 0.0)  # Only good quality temperature
-        query_builder.add_range_filter("DEPTH", 0, 20)  # Depth range from 0 to 10 meters
-    
-        df = query_builder.to_pandas_dataframe()
-    
+        from beacon_api import Client
+        return Client("https://beacon-wod.maris.nl")
+    except ImportError as exc:
+        raise ImportError(
+            "beacon_api is not installed. Run: pip install beacon-api"
+        ) from exc
 
-        # -------------------------------------------------
-        # COLUMN HARMONIZATION
-        # -------------------------------------------------
 
-        # Typical Beacon/WOD names
-        rename_map = {
+# ──────────────────────────────────────────────────────────────────────────────
+@st.cache_data(show_spinner="Downloading WOD climatology…")
+def get_ranges_from_wod(latitude: float, longitude: float) -> pd.DataFrame:
+    """
+    Query the World Ocean Database for temperature profiles around the given
+    coordinate (±0.5° in both lat and lon) and return a DataFrame with columns:
+        DEPTH, min_temperature, max_temperature
+
+    Parameters
+    ----------
+    latitude  : float  – decimal degrees (positive = North)
+    longitude : float  – decimal degrees (positive = East)
+
+    Returns
+    -------
+    pd.DataFrame
+    """
+    client = _get_client()
+
+    lat_min = round(latitude,  1) - 0.5
+    lat_max = round(latitude,  1) + 0.5
+    lon_min = round(longitude, 1) - 0.5
+    lon_max = round(longitude, 1) + 0.5
+
+    qb = client.query()
+
+    # ── Columns ──────────────────────────────────────────────────────────────
+    qb.add_select_column("wod_unique_cast")
+    qb.add_select_column("Platform",              alias="PLATFORM")
+    qb.add_select_column("Institute",             alias="INSTITUTE")
+    qb.add_select_column("Temperature",           alias="TEMPERATURE")
+    qb.add_select_column("Temperature_WODflag",   alias="TEMPERATURE_QC")
+    qb.add_select_column("Temperature.units",     alias="TEMPERATURE_UNIT")
+    qb.add_select_column("z",                     alias="DEPTH")
+    qb.add_select_column("z.units",               alias="DEPTH_UNIT")
+    qb.add_select_column("time",                  alias="TIME")
+    qb.add_select_column("lon",                   alias="LONGITUDE")
+    qb.add_select_column("lat",                   alias="LATITUDE")
+    qb.add_select_column(".featureType",          alias="FEATURE_TYPE")
+
+    # ── Filters ───────────────────────────────────────────────────────────────
+    qb.add_range_filter("TIME",        "1970-01-01T00:00:00", "2023-01-01T00:00:00")
+    qb.add_is_not_null_filter("TEMPERATURE")
+    qb.add_not_equals_filter("TEMPERATURE", -1e+10)   # WOD sentinel missing value
+    qb.add_equals_filter("TEMPERATURE_QC", 0.0)        # good quality only
+    qb.add_range_filter("DEPTH",       0,       10_000)
+    qb.add_range_filter("LONGITUDE",   lon_min, lon_max)
+    qb.add_range_filter("LATITUDE",    lat_min, lat_max)
+
+    df = qb.to_pandas_dataframe()
+    rename_map = {
             "TIME": "time",
             "TEMPERATURE": "TEMP",
         }
 
-        df = df.rename(columns=rename_map)
+    df = df.rename(columns=rename_map)
 
-        # -------------------------------------------------
-        # REQUIRED COLUMNS
-        # -------------------------------------------------
-
-        if "time" not in df.columns:
-            raise ValueError(
-                "Missing 'time' column in WOD response."
-            )
-
-        if "TEMP" not in df.columns:
-            raise ValueError(
-                "Missing 'TEMP' column in WOD response."
-            )
-
-        # -------------------------------------------------
-        # TYPE CLEANING
-        # -------------------------------------------------
-
-        df["time"] = pd.to_datetime(
-            df["time"],
-            errors="coerce",
-        )
-
-        df["TEMP"] = pd.to_numeric(
-            df["TEMP"],
-            errors="coerce",
-        )
-
-        # Optional: keep only needed columns
-        df = df[["time", "TEMP"]]
-
-        # Remove NaNs
-        df = df.dropna()
-
-        # Sort by time
-        df = df.sort_values("time")
-
-        return df
-
-    except Exception as exc:
-
-        st.warning(
-            f"Could not fetch WOD data: {exc}"
-        )
-
-        return None
-
+    return df
 
 # ── Plot helpers ──────────────────────────────────────────────────────────────
 
