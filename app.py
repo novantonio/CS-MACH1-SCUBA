@@ -172,58 +172,41 @@ def fetch_cora_data(latitude: float, longitude: float) -> pd.DataFrame | None:
 
 # ── WOD API ──────────────────────────────────────────────────────────────────
 
-WOD_URL_TEMPLATE = (
-    "https://beacon.maris.nl/api/query?"
-    "collections=wod"
-    "&format=csv"
-    "&latitude={lat}"
-    "&longitude={lon}"
-    "&radius=0.1"
-    "&parameter=TEMP"
-)
+BEACON_INSTANCE_URL = "https://beacon-wod.maris.nl"
 
 @st.cache_data(show_spinner="Downloading WOD climatology…")
 def fetch_wod_data(
     latitude: float,
     longitude: float,
 ) -> pd.DataFrame | None:
-    """
-    Fetch WOD temperature data from Beacon/Blue-Cloud
-    and return a dataframe compatible with CORA.
 
-    Output columns:
-    - time
-    - TEMP
-
-    Compatible with:
-    - plot_doy_all_mean()
-    - CORA plotting utilities
-    """
-
-    url = WOD_URL_TEMPLATE.format(
-        lat=round(latitude, 4),
-        lon=round(longitude, 4),
-    )
+    client = Client(BEACON_INSTANCE_URL)
 
     try:
-        response = requests.get(
-            url,
-            verify=False,
-            timeout=120,
-        )
-
-        response.raise_for_status()
-
-        # Beacon sometimes returns HTML error pages
-        if "<html" in response.text.lower():
-            raise ValueError(
-                "WOD Beacon returned HTML instead of CSV."
-            )
-
-        # Read CSV
-        df = pd.read_csv(
-            io.StringIO(response.text)
-        )
+        query_builder = client.query()
+        query_builder.add_select_column("wod_unique_cast") 
+        query_builder.add_select_column("Platform", alias="PLATFORM") 
+        query_builder.add_select_column("Institute", alias="INSTITUTE") 
+        query_builder.add_select_column("Temperature", alias="TEMPERATURE")
+        query_builder.add_select_column("Temperature_WODflag", alias="TEMPERATURE_QC")
+        query_builder.add_select_column("Temperature.units", alias="TEMPERATURE_UNIT")
+        query_builder.add_select_column("z", alias="DEPTH")
+        query_builder.add_select_column("time", alias="TIME") 
+        query_builder.add_select_column("lon", alias="LONGITUDE")
+        query_builder.add_select_column("lat", alias="LATITUDE")
+        query_builder.add_select_column(".featureType", alias="FEATURE_TYPE")
+        
+        ## Add the filters
+        query_builder.add_range_filter("TIME", "1950-01-01T00:00:00", "2025-01-01T00:00:00")  # You can adjust the date range as needed. The format is ISO 8601.
+        query_builder.add_range_filter("LONGITUDE", (latitude - 0.1), (latitude + 0.1))  # Longitude range
+        query_builder.add_range_filter("LATITUDE", (longitude - 0.1), (longitude + 0.1))  # Latitude range from -90 to 90 (you can adjust as needed)
+        query_builder.add_is_not_null_filter("TEMPERATURE")  # Ensure Temperature is not null
+        query_builder.add_not_equals_filter("TEMPERATURE", -1e+10)  # Remove missing values
+        query_builder.add_equals_filter("TEMPERATURE_QC", 0.0)  # Only good quality temperature
+        query_builder.add_range_filter("DEPTH", 0, 20)  # Depth range from 0 to 10 meters
+    
+        df = query_builder.to_pandas_dataframe()
+    
 
         # -------------------------------------------------
         # COLUMN HARMONIZATION
@@ -231,10 +214,8 @@ def fetch_wod_data(
 
         # Typical Beacon/WOD names
         rename_map = {
-            "datetime": "time",
-            "date_time": "time",
-            "temperature": "TEMP",
-            "temp": "TEMP",
+            "TIME": "time",
+            "TEMPERATURE": "TEMP",
         }
 
         df = df.rename(columns=rename_map)
@@ -718,6 +699,14 @@ if "logger_dfs" in st.session_state:
         st.error("CORA data could not be fetched. Check your connection and try again.")
         st.stop()
 
+    # Fetch WOD once
+    with st.spinner("Loading WOD data…"):
+        wod_df = fetch_wod_data(latitude, longitude)
+
+    if wod_df is None:
+        st.error("WOD data could not be fetched. Check your connection and try again.")
+        st.stop()
+
     # ── Per-file section ──────────────────────────────────────────────────────
     for fname, sdata in logger_dfs.items():
 
@@ -769,13 +758,6 @@ if "logger_dfs" in st.session_state:
     
     st.divider()
   
-    # Fetch WOD once
-    with st.spinner("Loading WOD data…"):
-        wod_df = fetch_wod_data(latitude, longitude)
-
-    if wod_df is None:
-        st.error("WOD data could not be fetched. Check your connection and try again.")
-        st.stop()
     
     # Plot 4 – DOY vs WOD (all loggers)
     fig4 = plot_doy_all(wod_df, logger_dfs, latitude, longitude)
