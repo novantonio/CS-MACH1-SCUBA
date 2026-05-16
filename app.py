@@ -530,7 +530,7 @@ with st.sidebar:
 # ── File uploader (main area) ─────────────────────────────────────────────────
 
 uploaded_files = st.file_uploader(
-    "Upload one or more envlog CSV files",
+    "Upload one or more envlog CSV files, then press 'PROCESS' ",
     type=["csv"],
     accept_multiple_files=True,
 )
