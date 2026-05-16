@@ -335,7 +335,7 @@ def plot_series_and_doy(
     # ── [1,1] DOY — MEDIAN marker (darkorange) ────────────────────────────────
     _draw_cora_doy(ax4)
     ax4.plot(d_doy, t_med,
-             marker='x', markersize=MARKERSIZE, linestyle="None",
+             marker=marker, markersize=MARKERSIZE, linestyle="None",
              color="darkorange", markeredgecolor="black", markeredgewidth=0.8, zorder=5)
     ax4.annotate(f"median {t_med:.2f} °C",
                  xy=(d_doy, t_med), xytext=(d_doy + 4, t_med - 0.4),
