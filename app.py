@@ -624,7 +624,7 @@ if "logger_dfs" in st.session_state:
     for fname, sdata in logger_dfs.items():
         rows.append({
             "File":        fname,
-            "Name":        sdata["custom_name"].iloc[0],
+            #"Name":        sdata["custom_name"].iloc[0],
             "Month":       sdata["time"].iloc[0].strftime("%B %Y"),
             "Mean (°C)":   round(sdata["temperature"].mean(),   2),
             "Median (°C)": round(sdata["temperature"].median(), 2),
