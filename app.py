@@ -441,37 +441,36 @@ def plot_doy_all_mean(
         marker = _year_marker(year)
 
         for (fname, sdata), sc in zip(logger_dfs.items(), star_colours):
+          month = sdata["time"].iloc[0].month
+          tavg = sdata["temperature"].mean()
+          label = sdata["custom_name"].iloc[0]
+          year = sdata["time"].iloc[0].year
 
-        month = sdata["time"].iloc[0].month
-        tavg = sdata["temperature"].mean()
-        label = sdata["custom_name"].iloc[0]
-        year = sdata["time"].iloc[0].year
+          marker = _year_marker(year)
 
-        marker = _year_marker(year)
-
-        ax.plot(
-            month,
-            tavg,
-            marker=marker,
-            markersize=8,
-            linestyle="None",
-            color=sc,
-            markeredgecolor="black",
-            markeredgewidth=0.8,
-            label=f"{label} ({year})",
-        )
-        
-        ax.plot(
-            month,
-            tavg2,
-            marker=marker,
-            markersize=8,
-            linestyle="None",
-            color=sc,
-            markeredgecolor="black",
-            markeredgewidth=0.8,
-            label=f"{label} ({year})",
-        )
+          ax.plot(
+              month,
+              tavg,
+              marker=marker,
+              markersize=8,
+              linestyle="None",
+              color=sc,
+              markeredgecolor="black",
+              markeredgewidth=0.8,
+              label=f"{label} ({year})",
+          )
+          
+          ax.plot(
+              month,
+              tavg2,
+              marker=marker,
+              markersize=8,
+              linestyle="None",
+              color=sc,
+              markeredgecolor="black",
+              markeredgewidth=0.8,
+              label=f"{label} ({year})",
+          )
 
     # Formatting
     ax.set_xticks(range(1, 13))
@@ -491,7 +490,7 @@ def plot_doy_all_mean(
 
     ax.grid(True, alpha=0.3)
 
-    # ax1.legend()
+    # ax.legend()
 
     fig.tight_layout()
     return fig
