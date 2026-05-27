@@ -339,7 +339,7 @@ def plot_series_and_doy(
     # ── [1,0] DOY — MEAN marker (crimson) ─────────────────────────────────────
     _draw_cora_doy(ax3)
     ax3.plot(d_doy, t_mean,
-             marker=marker, markersize=22, linestyle="None",
+             marker=marker, markersize=12, linestyle="None",
              color="crimson", markeredgecolor="black", markeredgewidth=0.8, zorder=5)
     ax3.annotate(f"mean {t_mean:.2f} °C",
                  xy=(d_doy, t_mean), xytext=(d_doy + 4, t_mean + 0.3),
@@ -350,7 +350,7 @@ def plot_series_and_doy(
     # ── [1,1] DOY — MEDIAN marker (darkorange) ────────────────────────────────
     _draw_cora_doy(ax4)
     ax4.plot(d_doy, t_med,
-             marker=marker, markersize=22, linestyle="None",
+             marker=marker, markersize=12, linestyle="None",
              color="darkorange", markeredgecolor="black", markeredgewidth=0.8, zorder=5)
     ax4.annotate(f"median {t_med:.2f} °C",
                  xy=(d_doy, t_med), xytext=(d_doy + 4, t_med - 0.4),
