@@ -191,7 +191,9 @@ def fetch_cora_data(latitude: float, longitude: float) -> pd.DataFrame | None:
 def _get_wod_client():
     try:
         from beacon_api import Client          # noqa: PLC0415
-        return Client("https://beacon-wod.maris.nl")
+        return Client("https://beacon-wod.maris.nl",
+                        proxy_headers={"User-Agent": "my-app/1.0 (antonio.novellino@dedagroup.it)"}
+                       )
     except ImportError as exc:
         raise ImportError("Run: pip install beacon-api") from exc
 
@@ -200,10 +202,10 @@ def _get_wod_client():
 def get_ranges_from_wod(latitude: float, longitude: float) -> pd.DataFrame | None:
     try:
         client  = _get_wod_client()
-        lat_min = round(latitude,  1) - 0.5
-        lat_max = round(latitude,  1) + 0.5
-        lon_min = round(longitude, 1) - 0.5
-        lon_max = round(longitude, 1) + 0.5
+        lat_min = round(latitude,  1) - 0.1
+        lat_max = round(latitude,  1) + 0.1
+        lon_min = round(longitude, 1) - 0.1
+        lon_max = round(longitude, 1) + 0.1
 
         qb = client.query()
         qb.add_select_column("wod_unique_cast")
@@ -214,7 +216,7 @@ def get_ranges_from_wod(latitude: float, longitude: float) -> pd.DataFrame | Non
         qb.add_select_column("lon",                 alias="LONGITUDE")
         qb.add_select_column("lat",                 alias="LATITUDE")
 
-        qb.add_range_filter("TIME",      "1970-01-01T00:00:00", "2023-01-01T00:00:00")
+        qb.add_range_filter("TIME", "1970-01-01T00:00:00", "2023-01-01T00:00:00")
         qb.add_is_not_null_filter("TEMPERATURE")
         qb.add_not_equals_filter("TEMPERATURE", -1e10)
         qb.add_equals_filter("TEMPERATURE_QC", 0.0)
@@ -321,7 +323,7 @@ def plot_series_and_doy(
     ax2.set_xlabel("Month")
     ax2.set_ylabel("Temperature [°C]")
     ax2.set_ylim(top=TMAX)
-    ax2.set_title("CORA Monthly Mean ± Std vs Logger")
+    ax2.set_title("CORA Monthly Mean ± Std vs Logger |  ({latitude:.2f}, {longitude:.2f})")
     ax2.legend(fontsize=8)
     ax2.grid(True, alpha=0.3)
 
@@ -345,18 +347,20 @@ def plot_series_and_doy(
                  xy=(d_doy, t_mean), xytext=(d_doy + 4, t_mean + 0.3),
                  fontsize=8, color="crimson", fontweight="bold",
                  arrowprops=dict(arrowstyle="-", color="crimson", lw=0.8))
-    ax3.set_title(f"DOY — Mean  |  ({latitude:.2f}, {longitude:.2f})")
-
-    # ── [1,1] DOY — MEDIAN marker (darkorange) ────────────────────────────────
-    _draw_cora_doy(ax4)
-    ax4.plot(d_doy, t_med,
+    ax3.plot(d_doy, t_med,
              marker=marker, markersize=12, linestyle="None",
              color="darkorange", markeredgecolor="black", markeredgewidth=0.8, zorder=5)
-    ax4.annotate(f"median {t_med:.2f} °C",
+    ax3.annotate(f"median {t_med:.2f} °C",
                  xy=(d_doy, t_med), xytext=(d_doy + 4, t_med - 0.4),
                  fontsize=8, color="darkorange", fontweight="bold",
                  arrowprops=dict(arrowstyle="-", color="darkorange", lw=0.8))
-    ax4.set_title(f"DOY — Median  |  ({latitude:.2f}, {longitude:.2f})")
+    ax3.set_title(f"CORA Monthly Mean - DOY vs logger |  ({latitude:.2f}, {longitude:.2f})")
+
+    # ── [1,1] DOY — MEDIAN marker (darkorange) ────────────────────────────────
+    #_draw_cora_doy(ax4)
+    
+    
+    
 
     fig.suptitle(f"{label} ({yr})", fontsize=13, fontweight="bold", y=1.01)
     fig.tight_layout()
@@ -621,6 +625,7 @@ def build_report_pdf(
 
     fig_monthly = plot_monthly_all(cora_df, logger_dfs)
     story.append(_fig_to_rl_image(fig_monthly, width_cm=26.0))
+  
     plt.close(fig_monthly)
 
     story.append(Spacer(1, 0.5 * rl_cm))
@@ -810,7 +815,7 @@ if "logger_dfs" in st.session_state:
             "N samples":   len(proc_df),
         })
     st.dataframe(pd.DataFrame(rows), use_container_width=True)
-
+'''
     fig_doy = plot_doy_all(cora_df, logger_dfs, latitude, longitude)
     st.pyplot(fig_doy)
     plt.close(fig_doy)
@@ -820,11 +825,24 @@ if "logger_dfs" in st.session_state:
     fig_monthly = plot_monthly_all(cora_df, logger_dfs)
     st.pyplot(fig_monthly)
     plt.close(fig_monthly)
+'''
+    
+    fig_doy = plot_doy_all(cora_df, logger_dfs, latitude, longitude)
+    fig_monthly = plot_monthly_all(cora_df, logger_dfs)
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.pyplot(fig_doy)
+        plt.close(fig_doy)
+    
+    with col2:
+        st.pyplot(fig_monthly)
+        plt.close(fig_monthly)
 
     st.info(
         "⭐ stars = 2025  |  ▲ triangles = 2026  |  ■ squares = 2027  |  ● circles = other  \n"
         "**Filled / crimson** = mean  ·  **darkorange** = median"
     )
-
     st.divider()
     cs_mach1_footer()
