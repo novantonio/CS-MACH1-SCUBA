@@ -815,17 +815,6 @@ if "logger_dfs" in st.session_state:
             "N samples":   len(proc_df),
         })
     st.dataframe(pd.DataFrame(rows), use_container_width=True)
-'''
-    fig_doy = plot_doy_all(cora_df, logger_dfs, latitude, longitude)
-    st.pyplot(fig_doy)
-    plt.close(fig_doy)
-
-    st.divider()
-
-    fig_monthly = plot_monthly_all(cora_df, logger_dfs)
-    st.pyplot(fig_monthly)
-    plt.close(fig_monthly)
-'''
     
     fig_doy = plot_doy_all(cora_df, logger_dfs, latitude, longitude)
     fig_monthly = plot_monthly_all(cora_df, logger_dfs)
