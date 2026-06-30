@@ -415,11 +415,16 @@ def plot_series_and_doy(
     m_month = sdata["time"].iloc[0].month
     d_doy   = sdata["time"].iloc[0].timetuple().tm_yday
 
-    cora_m       = cora_df.copy()
-    cora_m["month"] = cora_m["time"].dt.month
-    cora_monthly = cora_m.groupby("month")["TEMP"].agg(["mean", "std"]).reset_index()
-    years   = sorted(cora_df["time"].dt.year.unique())
-    colours = cm.tab20(np.linspace(0, 1, len(years)))
+    cora_available = cora_df is not None and not cora_df.empty
+    if cora_available:
+        cora_m       = cora_df.copy()
+        cora_m["month"] = cora_m["time"].dt.month
+        cora_monthly = cora_m.groupby("month")["TEMP"].agg(["mean", "std"]).reset_index()
+        years   = sorted(cora_df["time"].dt.year.unique())
+        colours = cm.tab20(np.linspace(0, 1, max(len(years), 1)))
+    else:
+        cora_monthly = pd.DataFrame()
+        years, colours = [], []
 
     # [0,0] Time-series
     _style_ax(ax1)
@@ -439,30 +444,37 @@ def plot_series_and_doy(
 
     # [0,1] CORA monthly mean ± std
     _style_ax(ax2)
-    ax2.scatter(cora_monthly["month"], cora_monthly["mean"],
-                color="steelblue", zorder=3, label="CORA monthly mean")
-    ax2.errorbar(cora_monthly["month"], cora_monthly["mean"],
-                 yerr=cora_monthly["std"], fmt="o", color="steelblue",
-                 capsize=3, alpha=0.5, label="± std")
-    ax2.plot(m_month, t_mean, marker=marker, markersize=12, ls="None",
-             color="crimson", markeredgecolor="black", markeredgewidth=0.8,
-             zorder=5, label=f"{label} mean {t_mean:.2f} °C")
-    ax2.plot(m_month, t_med, marker=marker, markersize=12, ls="None",
-             color="darkorange", markeredgecolor="black", markeredgewidth=0.8,
-             zorder=5, label=f"{label} median {t_med:.2f} °C")
-    ax2.plot([m_month, m_month], [t_mean, t_med],
-             color="grey", lw=1.2, ls=":", zorder=4)
-    ax2.set_xticks(range(1, 13))
-    ax2.set_xticklabels(MONTH_LABELS, fontsize=8)
-    ax2.set_xlabel("Month"); ax2.set_ylabel("Temperature [°C]")
-    ax2.set_ylim(top=TMAX)
-    ax2.set_title("CORA Monthly Mean ± Std vs Logger")
-    ax2.legend(fontsize=8)
+    if cora_available:
+        ax2.scatter(cora_monthly["month"], cora_monthly["mean"],
+                    color="steelblue", zorder=3, label="CORA monthly mean")
+        ax2.errorbar(cora_monthly["month"], cora_monthly["mean"],
+                     yerr=cora_monthly["std"], fmt="o", color="steelblue",
+                     capsize=3, alpha=0.5, label="± std")
+        ax2.plot(m_month, t_mean, marker=marker, markersize=12, ls="None",
+                 color="crimson", markeredgecolor="black", markeredgewidth=0.8,
+                 zorder=5, label=f"{label} mean {t_mean:.2f} °C")
+        ax2.plot(m_month, t_med, marker=marker, markersize=12, ls="None",
+                 color="darkorange", markeredgecolor="black", markeredgewidth=0.8,
+                 zorder=5, label=f"{label} median {t_med:.2f} °C")
+        ax2.plot([m_month, m_month], [t_mean, t_med],
+                 color="grey", lw=1.2, ls=":", zorder=4)
+        ax2.set_xticks(range(1, 13))
+        ax2.set_xticklabels(MONTH_LABELS, fontsize=8)
+        ax2.set_xlabel("Month"); ax2.set_ylabel("Temperature [°C]")
+        ax2.set_ylim(top=TMAX)
+        ax2.set_title("CORA Monthly Mean ± Std vs Logger")
+        ax2.legend(fontsize=8)
+    else:
+        ax2.text(0.5, 0.5, "CORA Climatology Unavailable",
+                 transform=ax2.transAxes, ha="center", va="center",
+                 color="#c62828", fontsize=11, fontweight="bold")
+        ax2.set_title("CORA Monthly Mean ± Std — N/A")
 
     def _draw_doy(ax):
-        for colour, (year, yd) in zip(colours, cora_df.groupby(cora_df["time"].dt.year)):
-            ax.plot(yd["time"].dt.dayofyear, yd["TEMP"],
-                    marker=".", ms=4, ls="--", color=colour, alpha=0.6)
+        if cora_available:
+            for colour, (year, yd) in zip(colours, cora_df.groupby(cora_df["time"].dt.year)):
+                ax.plot(yd["time"].dt.dayofyear, yd["TEMP"],
+                        marker=".", ms=4, ls="--", color=colour, alpha=0.6)
         ax.set_xlabel("Day of Year"); ax.set_ylabel("Temperature [°C]")
         ax.grid(True, alpha=0.3)
 
@@ -474,7 +486,8 @@ def plot_series_and_doy(
     ax3.annotate(f"mean {t_mean:.2f} °C", xy=(d_doy, t_mean),
                  xytext=(d_doy+4, t_mean+0.3), fontsize=8, color="crimson",
                  fontweight="bold", arrowprops=dict(arrowstyle="-", color="crimson", lw=0.8))
-    ax3.set_title(f"DOY — Mean marker | ({latitude:.2f}, {longitude:.2f})")
+    ax3.set_title(f"DOY — Mean marker | ({latitude:.2f}, {longitude:.2f})"
+                  + ("" if cora_available else " [no CORA]"))
 
     # [1,1] DOY median
     _draw_doy(ax4)
@@ -484,7 +497,8 @@ def plot_series_and_doy(
     ax4.annotate(f"median {t_med:.2f} °C", xy=(d_doy, t_med),
                  xytext=(d_doy+4, t_med-0.4), fontsize=8, color="darkorange",
                  fontweight="bold", arrowprops=dict(arrowstyle="-", color="darkorange", lw=0.8))
-    ax4.set_title(f"DOY — Median marker | ({latitude:.2f}, {longitude:.2f})")
+    ax4.set_title(f"DOY — Median marker | ({latitude:.2f}, {longitude:.2f})"
+                  + ("" if cora_available else " [no CORA]"))
 
     fig.suptitle(f"{label} ({yr})", fontsize=13, fontweight="bold", y=1.01)
     fig.tight_layout()
@@ -493,11 +507,12 @@ def plot_series_and_doy(
 
 def plot_doy_all(cora_df, logger_dfs, latitude, longitude) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(12, 6))
-    years   = sorted(cora_df["time"].dt.year.unique())
-    colours = cm.tab20(np.linspace(0, 1, len(years)))
-    for colour, (year, yd) in zip(colours, cora_df.groupby(cora_df["time"].dt.year)):
-        ax.plot(yd["time"].dt.dayofyear, yd["TEMP"],
-                marker=".", ms=4, ls="--", color=colour, alpha=0.5, label=str(year))
+    if cora_df is not None and not cora_df.empty:
+        years   = sorted(cora_df["time"].dt.year.unique())
+        colours = cm.tab20(np.linspace(0, 1, max(len(years), 1)))
+        for colour, (year, yd) in zip(colours, cora_df.groupby(cora_df["time"].dt.year)):
+            ax.plot(yd["time"].dt.dayofyear, yd["TEMP"],
+                    marker=".", ms=4, ls="--", color=colour, alpha=0.5, label=str(year))
     star_colours = cm.Set1(np.linspace(0, 1, max(len(logger_dfs), 1)))
     for (fname, sdata), sc in zip(logger_dfs.items(), star_colours):
         d      = sdata["time"].iloc[0].timetuple().tm_yday
@@ -523,12 +538,17 @@ def plot_doy_all(cora_df, logger_dfs, latitude, longitude) -> plt.Figure:
 
 def plot_doy_all_mean(cora_df, logger_dfs, latitude, longitude) -> plt.Figure:
     fig, ax = plt.subplots(figsize=(12, 6))
-    cora_tmp = cora_df.copy()
-    cora_tmp["month"] = cora_tmp["time"].dt.month
-    cm_stats = cora_tmp.groupby("month")["TEMP"].agg(["mean", "std"]).reset_index()
-    ax.scatter(cm_stats["month"], cm_stats["mean"], label="Monthly Mean Temperature")
-    ax.errorbar(cm_stats["month"], cm_stats["mean"], yerr=cm_stats["std"],
-                fmt="o", capsize=3, label="Monthly Standard Deviation")
+    if cora_df is not None and not cora_df.empty:
+        cora_tmp = cora_df.copy()
+        cora_tmp["month"] = cora_tmp["time"].dt.month
+        cm_stats = cora_tmp.groupby("month")["TEMP"].agg(["mean", "std"]).reset_index()
+        ax.scatter(cm_stats["month"], cm_stats["mean"], label="Monthly Mean Temperature")
+        ax.errorbar(cm_stats["month"], cm_stats["mean"], yerr=cm_stats["std"],
+                    fmt="o", capsize=3, label="Monthly Standard Deviation")
+    else:
+        ax.text(0.5, 0.5, "CORA Climatology Unavailable",
+                transform=ax.transAxes, ha="center", va="center",
+                color="#c62828", fontsize=11, fontweight="bold")
     star_colours = cm.Set1(np.linspace(0, 1, max(len(logger_dfs), 1)))
     for (fname, sdata), sc in zip(logger_dfs.items(), star_colours):
         month  = sdata["time"].iloc[0].month
@@ -645,12 +665,15 @@ if "results" in st.session_state:
     with st.spinner("Loading CORA data…"):
         cora_df = fetch_cora_data(latitude, longitude)
     if cora_df is None:
-        st.error("CORA data could not be fetched."); st.stop()
+        st.warning(
+            "⚠️ CORA climatology not available for this location (404 / network error). "
+            "Continuing without CORA — use **Custom Thresholds** for QC."
+        )
 
     with st.spinner("Loading WOD data…"):
         wod_df = get_ranges_from_wod(latitude, longitude)
 
-    cora_monthly_global = cora_to_monthly(cora_df)
+    cora_monthly_global = cora_to_monthly(cora_df) if cora_df is not None else pd.DataFrame()
 
     pdf_buffer = io.BytesIO()
     pdf = PdfPages(pdf_buffer)
