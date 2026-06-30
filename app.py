@@ -231,6 +231,21 @@ def get_ranges_from_wod(latitude: float, longitude: float) -> pd.DataFrame | Non
         st.warning(f"Could not fetch WOD data: {exc}")
         return None
 
+@st.cache_data(show_spinner="Computing WOD monthly climatology…")
+def get_wod_monthly(latitude: float, longitude: float) -> pd.DataFrame | None:
+    """Restituisce statistiche mensili (mean, median, std) da WOD."""
+    df = get_ranges_from_wod(latitude, longitude)
+    if df is None or df.empty:
+        return None
+    
+    df = df.copy()
+    df["month"] = df["time"].dt.month
+    wod_monthly = (
+        df.groupby("month")["TEMP"]
+        .agg(["mean", "median", "std", "count"])
+        .reset_index()
+    )
+    return wod_monthly
 
 # ── Plot helpers ──────────────────────────────────────────────────────────────
 
@@ -358,7 +373,45 @@ def plot_series_and_doy(
 
     # ── [1,1] DOY — MEDIAN marker (darkorange) ────────────────────────────────
     #_draw_cora_doy(ax4)
+
+    # ── [1,1] ax4 – WOD Monthly Mean/Median ───────────────────────────────────
+    wod_monthly = get_wod_monthly(latitude, longitude)
     
+    if wod_monthly is not None and not wod_monthly.empty:
+        # WOD background
+        ax4.scatter(wod_monthly["month"], wod_monthly["mean"],
+                    color="seagreen", zorder=3, label="WOD monthly mean")
+        ax4.errorbar(wod_monthly["month"], wod_monthly["mean"],
+                     yerr=wod_monthly["std"],
+                     fmt="o", color="seagreen", capsize=3, alpha=0.5, label="WOD ± std")
+        
+        # Logger mean & median (come in ax2 e ax3)
+        ax4.plot(m_month, t_mean,
+                 marker=marker, markersize=12, linestyle="None",
+                 color="crimson", markeredgecolor="black", markeredgewidth=0.8,
+                 zorder=5, label=f"{label} mean {t_mean:.2f} °C")
+        
+        ax4.plot(m_month, t_med,
+                 marker=marker, markersize=12, linestyle="None",
+                 color="darkorange", markeredgecolor="black", markeredgewidth=0.8,
+                 zorder=5, label=f"{label} median {t_med:.2f} °C")
+        
+        ax4.plot([m_month, m_month], [t_mean, t_med],
+                 color="grey", linewidth=1.2, linestyle=":", zorder=4)
+        
+        ax4.set_xticks(range(1, 13))
+        ax4.set_xticklabels(MONTH_LABELS, fontsize=8)
+        ax4.set_xlabel("Month")
+        ax4.set_ylabel("Temperature [°C]")
+        ax4.set_ylim(top=TMAX)
+        ax4.set_title("WOD Monthly Climatology vs Logger")
+        ax4.legend(fontsize=8)
+        ax4.grid(True, alpha=0.3)
+    else:
+        ax4.text(0.5, 0.5, "WOD data not available\nfor this location",
+                 ha="center", va="center", transform=ax4.transAxes,
+                 fontsize=12, color="gray")
+        ax4.set_title("WOD Monthly Climatology (unavailable)")
     
     
 
