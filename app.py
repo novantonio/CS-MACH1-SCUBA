@@ -183,29 +183,34 @@ def cora_to_monthly(cora_df: pd.DataFrame) -> pd.DataFrame:
 
 # ── WOD API ──────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner="Downloading WOD climatology…")
-def get_ranges_from_wod(latitude: float, longitude: float) -> pd.DataFrame:
-    from beacon_api import Client
-    client = Client("https://beacon-wod.maris.nl")
-    lat_min, lat_max = round(latitude, 1) - 0.5, round(latitude, 1) + 0.5
-    lon_min, lon_max = round(longitude, 1) - 0.5, round(longitude, 1) + 0.5
-    qb = client.query()
-    qb.add_select_column("wod_unique_cast")
-    qb.add_select_column("Temperature", alias="TEMPERATURE")
-    qb.add_select_column("Temperature_WODflag", alias="TEMPERATURE_QC")
-    qb.add_select_column("z", alias="DEPTH")
-    qb.add_select_column("time", alias="TIME")
-    qb.add_select_column("lon", alias="LONGITUDE")
-    qb.add_select_column("lat", alias="LATITUDE")
-    qb.add_range_filter("TIME", "1970-01-01T00:00:00", "2023-01-01T00:00:00")
-    qb.add_is_not_null_filter("TEMPERATURE")
-    qb.add_not_equals_filter("TEMPERATURE", -1e+10)
-    qb.add_equals_filter("TEMPERATURE_QC", 0.0)
-    qb.add_range_filter("DEPTH", 0, 10_000)
-    qb.add_range_filter("LONGITUDE", lon_min, lon_max)
-    qb.add_range_filter("LATITUDE", lat_min, lat_max)
-    df = qb.to_pandas_dataframe()
-    df = df.rename(columns={"TIME": "time", "TEMPERATURE": "TEMP"})
-    return df[["time", "TEMP"]]
+def get_ranges_from_wod(latitude: float, longitude: float) -> pd.DataFrame | None:
+    try:
+        from beacon_api import Client
+        client = Client("https://beacon-wod.maris.nl",
+                        proxy_headers={"User-Agent": "my-app/1.0 (antonio.novellino@dedagroup.it)"}
+                       )
+        lat_min, lat_max = round(latitude, 1) - 0.1, round(latitude, 1) + 0.1
+        lon_min, lon_max = round(longitude, 1) - 0.1, round(longitude, 1) + 0.1
+        qb = client.query()
+        qb.add_select_column("wod_unique_cast")
+        qb.add_select_column("Temperature", alias="TEMPERATURE")
+        qb.add_select_column("Temperature_WODflag", alias="TEMPERATURE_QC")
+        qb.add_select_column("z", alias="DEPTH")
+        qb.add_select_column("time", alias="TIME")
+        qb.add_select_column("lon", alias="LONGITUDE")
+        qb.add_select_column("lat", alias="LATITUDE")
+        qb.add_range_filter("TIME", "1970-01-01T00:00:00", "2023-01-01T00:00:00")
+        qb.add_is_not_null_filter("TEMPERATURE")
+        qb.add_not_equals_filter("TEMPERATURE", -1e+10)
+        qb.add_equals_filter("TEMPERATURE_QC", 0.0)
+        qb.add_range_filter("DEPTH", 0, 10_000)
+        qb.add_range_filter("LONGITUDE", lon_min, lon_max)
+        qb.add_range_filter("LATITUDE", lat_min, lat_max)
+        df = qb.to_pandas_dataframe()
+        df = df.rename(columns={"TIME": "time", "TEMPERATURE": "TEMP"})
+        return df[["time", "TEMP"]]
+    except Exception as exc:
+        return None
 
 
 # ── QC ────────────────────────────────────────────────────────────────────────
@@ -672,6 +677,11 @@ if "results" in st.session_state:
 
     with st.spinner("Loading WOD data…"):
         wod_df = get_ranges_from_wod(latitude, longitude)
+    if wod_df is None:
+        st.warning(
+            "⚠️ WOD data not available (Beacon API connection failed). "
+            "Continuing without WOD."
+        )
 
     cora_monthly_global = cora_to_monthly(cora_df) if cora_df is not None else pd.DataFrame()
 
